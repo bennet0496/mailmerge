@@ -45,12 +45,13 @@ function mailmerge() {
 
     formData.append("_separator", $("#mailmergesep").val())
     formData.append("_enclosure",  $("#mailmergeencl").val())
+    formData.append("_folder",  $("#mailmergefolder").val())
 
     let files = document.querySelector("#mailmergefile").files;
     if(files.length !== 0) {
         formData.append("csv", files[0], "data.csv")
     } else {
-        //TODO Display error
+        rcmail.show_popup_dialog("No CSV File was selected!", "Error");
         return
     }
 
@@ -76,4 +77,17 @@ rcmail.addEventListener('init', function(evt) {
     console.log(evt)
     rcmail.register_command("plugin.mailmerge", mailmerge, true)
     rcmail.env.compose_commands.push("plugin.mailmerge")
+
+    rcmail.http_get("plugin.mailmerge.get-folders")
 });
+
+rcmail.addEventListener("plugin.mailmerge.folders", function (data) {
+    const drafts = data['special_folders']['drafts'] ?? "Drafts";
+    $.each(data['folders'], function(i, folder) {
+        $("#mailmergefolder").append($('<option>', {
+            value: folder,
+            text: folder,
+            selected: folder === drafts
+        }))
+    })
+})

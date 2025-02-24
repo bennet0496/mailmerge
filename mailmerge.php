@@ -33,9 +33,10 @@ class mailmerge extends \rcube_plugin
         $this->rcmail = rcmail::get_instance();
 
         $this->register_action('plugin.mailmerge', [$this, 'mailmerge_action']);
+        $this->register_action('plugin.mailmerge.get-folders', [$this, 'get_folders']);
 
         $this->add_hook("ready", function ($param) {
-            self::log('ready', $param);
+//            self::log('ready', $param);
             if ($param['task'] == 'mail' && $param['action'] === 'compose') {
 
                 $header = \html::div('row', \html::div('col-12', \html::span("font-weight-bold", "Mail merge options")));
@@ -63,18 +64,28 @@ class mailmerge extends \rcube_plugin
                         'command' => 'plugin.mailmerge',
                         'onclick' => "rcmail.command('plugin.mailmerge', '', event.target, event)",
                         'class' => 'button mailmerge mx-4',
-                        'title' => 'mailmerge',
-                        'label' => 'mailmerge',
+                        'title' => 'Mailmerge',
+                        'label' => 'Mailmerge',
                         'domain' => $this->ID,
                         'width' => 32,
                         'height' => 32,
                         'aria-owns' => 'mailmerge',
                         'aria-haspopup' => 'false',
                         'aria-expanded' => 'false',
-                    ]))->show(rcube::Q('mailmerge')))
+                    ]))->show(rcube::Q('Mailmerge')))
                 );
 
-                $this->api->add_content(\html::div(["style" => "padding-bottom: 1rem; margin: 0", "class" => "file-upload"], $header . $separator . $enclosed . $file), 'composeoptions');
+                $fselect = new html_select(["id" => "mailmergefolder"]);
+
+                $folders = html::div('form-group row',
+                    html::label(['for' => 'mailmergefolder', 'class' => 'col-form-label col-6'], rcube::Q("Save to Folder"))
+                    . html::div('form-check col-6',
+                        $fselect->show(["id" => "mailmergefolder", "class" => "custom-select form-control pretty-select"])
+                    )
+                );
+
+                $this->api->add_content(\html::div(["style" => "padding-bottom: 1rem; margin: 0", "class" => "file-upload"],
+                    $header . $separator . $enclosed . $folders. $file), 'composeoptions');
                 $this->include_script('mailmerge.js');
             }
         });
@@ -102,6 +113,7 @@ class mailmerge extends \rcube_plugin
 
             "_separator" => ['filter' => FILTER_CALLBACK, 'options' => [$this, "filter_callback_separator"]],
             "_enclosure" => ['filter' => FILTER_CALLBACK, 'options' => [$this, "filter_callback_enclosure"]],
+            "_folder" => ['filter' => FILTER_CALLBACK, 'options' => [$this, "filter_callback_folder"]],
         ], true);
         self::log($input, $_REQUEST, $_FILES);
 
@@ -256,10 +268,17 @@ class mailmerge extends \rcube_plugin
             // endregion
 
             $msg_str = $mime->getMessage();
-            $this->rcmail->storage->save_message("Drafts", $msg_str);
+            $this->rcmail->storage->save_message($input["_folder"], $msg_str);
         }
     }
 
+    public function get_folders(): void
+    {
+        $this->rcmail->output->command("plugin.mailmerge.folders", [
+            'folders' => $this->rcmail->storage->list_folders(),
+            'special_folders' => $this->rcmail->storage->get_special_folders()
+        ]);
+    }
     private static function replace_vars(string|null $str, array $dict): string|null
 {
     if (is_null($str)) {
@@ -376,17 +395,17 @@ class mailmerge extends \rcube_plugin
         }
     }
 
-    private static function filter_callback_split(string $value): array
+    private function filter_callback_split(string $value): array
     {
         return explode(",", $value);
     }
 
-    private static function filter_callback_mode(string $value): string
+    private function filter_callback_mode(string $value): string
     {
         return strtolower($value) == "html" ? self::MODE_HTML : self::MODE_PLAIN;
     }
 
-    private static function filter_callback_separator(string $value): string
+    private function filter_callback_separator(string $value): string
     {
         if (strtolower($value) == "tab") {
             return "\t";
@@ -394,9 +413,18 @@ class mailmerge extends \rcube_plugin
         return in_array($value, [",", ";", "|"]) ? $value : ",";
     }
 
-    private static function filter_callback_enclosure(string $value): ?string
+    private function filter_callback_enclosure(string $value): ?string
     {
         return in_array($value, ["\"", "'"]) ? $value : "\"";
+    }
+
+    private function filter_callback_folder(string $folder): ?string
+    {
+        $folders = $this->rcmail->storage->list_folders();
+        $special_folders = $this->rcmail->storage->get_special_folders();
+        $drafts = array_key_exists("drafts", $special_folders) ? $special_folders["drafts"] : "Drafts";
+
+        return in_array($folder, $folders) ? $folder : $drafts;
     }
 
     private static function log(...$lines): void
