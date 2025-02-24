@@ -20,30 +20,12 @@
 // SOFTWARE.
 
 /** @noinspection PhpUnused */
-
 class mailmerge extends \rcube_plugin
 {
     private rcmail $rcmail;
 
-    private static function log(...$lines): void
-    {
-        foreach ($lines as $line) {
-            $bt = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 2)[1];
-            $func = $bt["function"];
-            $cls = $bt["class"];
-            if (!is_string($line)) {
-                $line = print_r($line, true);
-            }
-            $llines = explode(PHP_EOL, $line);
-            rcmail::write_log('mailmerge', "[mailmerge] {" . $cls . "::" . $func . "} " . $llines[0]);
-            unset($llines[0]);
-            if (count($llines) > 0) {
-                foreach ($llines as $l) {
-                    rcmail::write_log('mailmerge', str_pad("...", strlen("[mailmerge] "), " ", STR_PAD_BOTH) . "{" . $cls . "::" . $func . "} " . $l);
-                }
-            }
-        }
-    }
+    private const MODE_HTML = 'html';
+    private const MODE_PLAIN = 'plain';
 
 
     public function init(): void
@@ -51,10 +33,6 @@ class mailmerge extends \rcube_plugin
         $this->rcmail = rcmail::get_instance();
 
         $this->register_action('plugin.mailmerge', [$this, 'mailmerge_action']);
-
-        $this->add_hook("message_saved", function ($param) {
-            self::log($param);
-        });
 
         $this->add_hook("ready", function ($param) {
             self::log('ready', $param);
@@ -68,16 +46,13 @@ class mailmerge extends \rcube_plugin
                     \html::label(['for' => 'mailmergesep', 'class' => 'col-form-label col-6'], rcube::Q("Separator")) .
                     \html::div('col-6', $sselect->show(["id" => "mailmergesep", "class" => "custom-select form-control pretty-select"])));
 
-                $enclosed = html::div('form-group form-check row',
-                    html::label(['for' => 'mailmergeencl', 'class' => 'col-form-label col-6'],
-                        rcube::Q("Enclosed Fields")
-                    )
+                $eselect = new html_select(["id" => "mailmergeencl"]);
+                $eselect->add(["\" (Doube Quotes)", "' (Single Quote)"], ["\"", "'"]);
+
+                $enclosed = html::div('form-group row',
+                    html::label(['for' => 'mailmergeencl', 'class' => 'col-form-label col-6'], rcube::Q("Field Enclosure"))
                     . html::div('form-check col-6',
-                        (new html_checkbox(["value" => 1]))->show(1, [
-                            'name' => '_mailmerge_encl',
-                            'id' => 'mailmergeencl',
-                            'class' => 'form-check-input'
-                        ])
+                        $eselect->show(["id" => "mailmergeencl", "class" => "custom-select form-control pretty-select"])
                     )
                 );
 
@@ -105,94 +80,37 @@ class mailmerge extends \rcube_plugin
         });
     }
 
-    public static function replace_vars(string|null $str, array $dict): string|null
+    public function mailmerge_action(): void
     {
-        if (is_null($str)) {
-            return null;
-        }
+        $input = filter_input_array(INPUT_POST, [
+            "_to" => ['filter' => FILTER_CALLBACK, 'options' => [$this, 'filter_callback_split']],
+            "_cc" => ['filter' => FILTER_CALLBACK, 'options' => [$this, 'filter_callback_split']],
+            "_bcc" => ['filter' => FILTER_CALLBACK, 'options' => [$this, 'filter_callback_split']],
+            "_replyto" => ['filter' => FILTER_CALLBACK, 'options' => [$this, 'filter_callback_split']],
+            "_followupto" => ['filter' => FILTER_CALLBACK, 'options' => [$this, 'filter_callback_split']],
 
-        assert(is_string($str));
-        return preg_replace_callback("({{({*.*?}*)}})", function ($matches) use ($dict) {
-            $var = self::replace_vars($matches[1], $dict);
-            if (str_contains($var, "|")) {
-                $tokens = explode("|", $var);
-                if (count($tokens) >= 5 && in_array($tokens[1], ['*', '^', '$', '==', '>', '>=', '<', '<='])) {
-                    // Complex comparators
-                    $val = array_key_exists($tokens[0], $dict) ? $dict[$tokens[0]] : "";
-                    switch ($tokens[1]) {
-                        case '*':
-                            // {{name|*|if|then|else}} (includes)
-                            // If the value of the field name includes if, then the variable will be replaced by then, else by else.
-                            return str_contains($val, $tokens[2]) ? $tokens[3] : $tokens[4];
-                        case '^':
-                            // {{name|^|if|then|else}} (starts with)
-                            // If the value of the field name starts with if, then the variable will be replaced by then, else by else.
-                            return str_starts_with($val, $tokens[2]) ? $tokens[3] : $tokens[4];
-                        case '$':
-                            // {{name|$|if|then|else}} (ends with)
-                            // If the value of the field name ends with if, then the variable will be replaced by then, else by else.
-                            return str_ends_with($val, $tokens[2]) ? $tokens[3] : $tokens[4];
-                        case '==':
-                            // {{name|==|if|then|else}} (equal to) (number)
-                            // If the value of the field name is equal to if, then the variable will be replaced by then, else by else.
-                            return $val == $tokens[2] ? $tokens[3] : $tokens[4];
-                        case '>':
-                            // {{name|>|if|then|else}} (greater than) (number)
-                            // If the value of the field name is greater than if, then the variable will be replaced by then, else by else.
-                            return $val > $tokens[2] ? $tokens[3] : $tokens[4];
-                        case '>=':
-                            // {{name|>=|if|then|else}} (greater than or equal to) (number)
-                            // If the value of the field name is greater than or equal to if, then the variable will be replaced by then, else by else.
-                            return $val >= $tokens[2] ? $tokens[3] : $tokens[4];
-                        case '<':
-                            // {{name|<|if|then|else}} (less than) (number)
-                            // If the value of the field name is less than if, then the variable will be replaced by then, else by else.
-                            return $val < $tokens[2] ? $tokens[3] : $tokens[4];
-                        case '<=':
-                            // {{name|<=|if|then|else}} (less than or equal to) (number)
-                            // If the value of the field name is less than or equal to if, then the variable will be replaced by then, else by else.
-                            return $val <= $tokens[2] ? $tokens[3] : $tokens[4];
-                    }
-                } elseif (count($tokens) >= 3) {
-                    // {{name|if|then|else}}
-                    // {{name|if|then}}
-                    if (array_key_exists($tokens[0], $dict) && $dict[$tokens[0]] === $tokens[1]) {
-                        return $tokens[2];
-                    } else {
-                        return count($tokens) == 3 ? "" : $tokens[3];
-                    }
-                } else {
-                    // Malformed?
-                    return "";
-                }
-            } else {
-                if (array_key_exists($var, $dict)) {
-                    return $dict[$var];
-                } else {
-                    return "";
-                }
-            }
-        }, $str);
-    }
+            "_from" => ['filter' => FILTER_SANITIZE_NUMBER_INT, 'flags' => FILTER_REQUIRE_SCALAR],
 
-    public function mailmerge_action()
-    {
-        $input = filter_input_array(INPUT_POST, FILTER_UNSAFE_RAW);
-        self::log($_REQUEST, $_FILES);
-        $input["to"] = explode(",", $input["to"]);
-        $input["cc"] = explode(",", $input["cc"]);
-        $input["bcc"] = explode(",", $input["bcc"]);
-        $input["replyto"] = explode(",", $input["replyto"]);
-        $input["followupto"] = explode(",", $input["followupto"]);
+            "message" => ['filter' => FILTER_UNSAFE_RAW, 'flags' => FILTER_REQUIRE_SCALAR],
+            "_subject" => ['filter' => FILTER_UNSAFE_RAW, 'flags' => FILTER_REQUIRE_SCALAR],
 
-//        $files =
+            "_mode" => ['filter' => FILTER_CALLBACK, 'options' => [$this, 'filter_callback_mode']],
+            "_compose_id" => ['filter' => FILTER_UNSAFE_RAW, 'flags' => FILTER_REQUIRE_SCALAR],
+            "_mdn" => ['filter' => FILTER_VALIDATE_BOOL, 'flags' => FILTER_REQUIRE_SCALAR],
+            "_dsn" => ['filter' => FILTER_VALIDATE_BOOL, 'flags' => FILTER_REQUIRE_SCALAR],
+            "_priority" => ['filter' => FILTER_SANITIZE_NUMBER_INT, 'flags' => FILTER_REQUIRE_SCALAR],
+
+            "_separator" => ['filter' => FILTER_CALLBACK, 'options' => [$this, "filter_callback_separator"]],
+            "_enclosure" => ['filter' => FILTER_CALLBACK, 'options' => [$this, "filter_callback_enclosure"]],
+        ], true);
+        self::log($input, $_REQUEST, $_FILES);
 
         assert(count($_FILES) === 1, "File missing");
 
         $csv_data = [];
         // Read CSV
         if (($handle = fopen($_FILES['csv']['tmp_name'], "r")) !== FALSE) {
-            while (($data = fgetcsv($handle, null, ";")) !== FALSE) {
+            while (($data = fgetcsv($handle, null, $input["_separator"], $input["_enclosure"])) !== FALSE) {
                 $csv_data[] = $data;
             }
             fclose($handle);
@@ -210,12 +128,12 @@ class mailmerge extends \rcube_plugin
         foreach ($dict as &$line) {
             $mime = new Mail_mime();
 
-            $identity = $this->rcmail->user->get_identity($input["from"]);
+            $identity = $this->rcmail->user->get_identity($input["_from"]);
 
             $mime->headers([
                 'Date' => $this->rcmail->user_date(),
                 'User-Agent' => $this->rcmail->config->get('useragent'),
-                'Message-ID' => $this->rcmail->gen_message_id($input["from"]),
+                'Message-ID' => $this->rcmail->gen_message_id($input["_from"]),
             ]);
 
             if (!empty($identity['organization'])) {
@@ -225,39 +143,39 @@ class mailmerge extends \rcube_plugin
             $from = $identity['name'] . ' <' . $identity['email'] . '>';
             $mime->setFrom($from);
 
-            $mime->setSubject(self::replace_vars($input["subject"], $line));
+            $mime->setSubject(self::replace_vars($input["_subject"], $line));
 
-            foreach ($input["to"] as $recipient) {
+            foreach ($input["_to"] as $recipient) {
                 $mime->addTo(self::replace_vars($recipient, $line));
             }
-            if (count($input["cc"]) > 0) {
-                foreach ($input["cc"] as $recipient) {
+            if (count($input["_cc"]) > 0) {
+                foreach ($input["_cc"] as $recipient) {
                     $mime->addCc(self::replace_vars($recipient, $line));
                 }
             }
-            if (count($input["bcc"]) > 0) {
-                foreach ($input["bcc"] as $recipient) {
+            if (count($input["_bcc"]) > 0) {
+                foreach ($input["_bcc"] as $recipient) {
                     $mime->addBcc(self::replace_vars($recipient, $line));
                 }
             }
-            if (count($input["replyto"]) > 0) {
+            if (count($input["_replyto"]) > 0) {
                 $rto = array_map(function ($rr) use ($line) {
                     self::replace_vars($rr, $line);
-                }, $input["replyto"]);
+                }, $input["_replyto"]);
 
                 $mime->headers([
                     "Reply-To" => $rto,
                     "Mail-Reply-To" => $rto
                 ]);
             }
-            if (count($input["followupto"]) > 0) {
+            if (count($input["_followupto"]) > 0) {
                 $mime->headers(["Mail-Followup-To" => array_map(function ($rr) use ($line) {
                     self::replace_vars($rr, $line);
-                }, $input["followupto"])]);
+                }, $input["_followupto"])]);
             }
 
             $message = self::replace_vars($input["message"], $line);
-            if ($input["mode"] == "html") {
+            if ($input["_mode"] == self::MODE_HTML) {
                 $mime->setHTMLBody($message);
                 $mime->setTXTBody($this->rcmail->html2text($message));
             } else {
@@ -274,7 +192,8 @@ class mailmerge extends \rcube_plugin
                 $mime->headers(['X-Priority' => sprintf('%d (%s)', $input["_priority"], ucfirst($a_priorities[$input["_priority"]]))]);
             }
 
-            $COMPOSE    =& $_SESSION['compose_data_'.$input["compose_id"]];
+            // region Attachment parsing from core
+            $COMPOSE =& $_SESSION['compose_data_' . $input["_compose_id"]];
             if (!isset($COMPOSE['attachments'])) {
                 $COMPOSE['attachments'] = [];
             }
@@ -334,9 +253,169 @@ class mailmerge extends \rcube_plugin
                     );
                 }
             }
+            // endregion
 
             $msg_str = $mime->getMessage();
             $this->rcmail->storage->save_message("Drafts", $msg_str);
         }
     }
+
+    private static function replace_vars(string|null $str, array $dict): string|null
+{
+    if (is_null($str)) {
+        return null;
+    }
+
+    // self::log("call with: ".str_replace("\n", " ", $str));
+
+    assert(is_string($str));
+
+    $open_tags = 0;
+    $opened_at = false;
+    for ($ptr = 0; $ptr < strlen($str); $ptr++) {
+        self::log($ptr. " ". substr($str, $ptr, 2));
+        if (substr($str, $ptr, 2) == '{{') {
+            // a new tag is opened
+            if ($open_tags == 0) {
+                $opened_at = $ptr;
+            }
+            self::log("open tags ".$open_tags);
+            $open_tags += 1;
+            self::log("opening tag ".$open_tags);
+            $ptr += 1; // skip next char
+        }
+        if (substr($str, $ptr, 2) == '}}') {
+            $ptr += 1; // set ourselves one further to actual tag close
+            if ($open_tags > 0) {
+                $open_tags -= 1;
+                if ($open_tags === 0) {
+                    // highest hierarchy tag was closed
+                    // extract tag without surrounding {{ }}
+                    $tag = substr($str, $opened_at + 2, $ptr - $opened_at - 3);
+                    $taglen = strlen($tag) + 4;
+                    // parse the tag content that may recursively calls back to here again
+                    $replacement = self::parse_tag($tag, $dict);
+                    // extract string parts before and after the current tag
+                    $before_tag = substr($str, 0, $opened_at);
+                    $after_tag = substr($str, $ptr + 1);
+                    // built the new string
+                    $str = $before_tag . $replacement . $after_tag;
+                    // adjust pointer by length difference of the original tag and its replacement
+                    $ptr -= $taglen - strlen($replacement);
+                }
+            } // else we have dangling }}-s leave them as is
+        }
+    }
+    return $str;
+}
+    private static function parse_tag(string $var, array $dict) : ?string
+    {
+        $var = self::replace_vars($var, $dict);
+
+        if (str_contains($var, "|")) {
+            $tokens = explode("|", $var);
+            if (count($tokens) >= 5 && in_array($tokens[1], ['*', '^', '$', '==', '>', '>=', '<', '<='])) {
+                // Complex comparators
+                $val = array_key_exists($tokens[0], $dict) ? $dict[$tokens[0]] : "";
+                switch ($tokens[1]) {
+                    case '*':
+                        // {{name|*|if|then|else}} (includes)
+                        // If the value of the field name includes if, then the variable will be replaced by then, else by else.
+                        return str_contains($val, $tokens[2]) ? $tokens[3] : $tokens[4];
+                    case '^':
+                        // {{name|^|if|then|else}} (starts with)
+                        // If the value of the field name starts with if, then the variable will be replaced by then, else by else.
+                        return str_starts_with($val, $tokens[2]) ? $tokens[3] : $tokens[4];
+                    case '$':
+                        // {{name|$|if|then|else}} (ends with)
+                        // If the value of the field name ends with if, then the variable will be replaced by then, else by else.
+                        return str_ends_with($val, $tokens[2]) ? $tokens[3] : $tokens[4];
+                    case '==':
+                        // {{name|==|if|then|else}} (equal to) (number)
+                        // If the value of the field name is equal to if, then the variable will be replaced by then, else by else.
+                        return $val == $tokens[2] ? $tokens[3] : $tokens[4];
+                    case '>':
+                        // {{name|>|if|then|else}} (greater than) (number)
+                        // If the value of the field name is greater than if, then the variable will be replaced by then, else by else.
+                        return $val > $tokens[2] ? $tokens[3] : $tokens[4];
+                    case '>=':
+                        // {{name|>=|if|then|else}} (greater than or equal to) (number)
+                        // If the value of the field name is greater than or equal to if, then the variable will be replaced by then, else by else.
+                        return $val >= $tokens[2] ? $tokens[3] : $tokens[4];
+                    case '<':
+                        // {{name|<|if|then|else}} (less than) (number)
+                        // If the value of the field name is less than if, then the variable will be replaced by then, else by else.
+                        return $val < $tokens[2] ? $tokens[3] : $tokens[4];
+                    case '<=':
+                        // {{name|<=|if|then|else}} (less than or equal to) (number)
+                        // If the value of the field name is less than or equal to if, then the variable will be replaced by then, else by else.
+                        return $val <= $tokens[2] ? $tokens[3] : $tokens[4];
+                    default:
+                        // Invalid operation
+                        return $var;
+                }
+            } elseif (count($tokens) >= 3) {
+                // {{name|if|then|else}}
+                // {{name|if|then}}
+                if (array_key_exists($tokens[0], $dict) && $dict[$tokens[0]] === $tokens[1]) {
+                    return $tokens[2];
+                } else {
+                    return count($tokens) == 3 ? "" : $tokens[3];
+                }
+            } else {
+                // Malformed? Return original Tag
+                return $var;
+            }
+        } else {
+            if (array_key_exists($var, $dict)) {
+                return $dict[$var];
+            } else {
+                // Column doesn't exit. treat as empty
+                return "";
+            }
+        }
+    }
+
+    private static function filter_callback_split(string $value): array
+    {
+        return explode(",", $value);
+    }
+
+    private static function filter_callback_mode(string $value): string
+    {
+        return strtolower($value) == "html" ? self::MODE_HTML : self::MODE_PLAIN;
+    }
+
+    private static function filter_callback_separator(string $value): string
+    {
+        if (strtolower($value) == "tab") {
+            return "\t";
+        }
+        return in_array($value, [",", ";", "|"]) ? $value : ",";
+    }
+
+    private static function filter_callback_enclosure(string $value): ?string
+    {
+        return in_array($value, ["\"", "'"]) ? $value : "\"";
+    }
+
+    private static function log(...$lines): void
+{
+    foreach ($lines as $line) {
+        $bt = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 2)[1];
+        $func = $bt["function"];
+        $cls = $bt["class"];
+        if (!is_string($line)) {
+            $line = print_r($line, true);
+        }
+        $llines = explode(PHP_EOL, $line);
+        rcmail::write_log('mailmerge', "[mailmerge] {" . $cls . "::" . $func . "} " . $llines[0]);
+        unset($llines[0]);
+        if (count($llines) > 0) {
+            foreach ($llines as $l) {
+                rcmail::write_log('mailmerge', str_pad("...", strlen("[mailmerge] "), " ", STR_PAD_BOTH) . "{" . $cls . "::" . $func . "} " . $l);
+            }
+        }
+    }
+}
 }
