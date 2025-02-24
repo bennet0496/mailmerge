@@ -24,9 +24,9 @@ const MAILMERGE_LOG_FILE = "mailmerge";
 const MAILMERGE_VERSION = "0.1";
 
 use bennetcc\mailmerge\traits\DisableUser;
-use bennetcc\Log;
+use bennetcc\mailmerge\Log;
 use bennetcc\mailmerge\traits\ResolveUsername;
-use bennetcc\LogLevel;
+use bennetcc\mailmerge\LogLevel;
 use function bennetcc\mailmerge\__;
 
 require_once "util.php";

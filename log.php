@@ -21,7 +21,7 @@
  *
  */
 
-namespace bennetcc {
+namespace bennetcc\mailmerge {
 
     class Log
     {
