@@ -19,25 +19,52 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+const MAILMERGE_PREFIX = "mailmerge";
+const MAILMERGE_LOG_FILE = "mailmerge";
+const MAILMERGE_VERSION = "0.1";
+
+use bennetcc\mailmerge\traits\DisableUser;
+use bennetcc\Log;
+use bennetcc\mailmerge\traits\ResolveUsername;
+use bennetcc\LogLevel;
+use function bennetcc\mailmerge\__;
+
+require_once "util.php";
+require_once "log.php";
+require_once "traits/DisableUser.php";
+require_once "traits/ResolveUsername.php";
+
 /** @noinspection PhpUnused */
+
 class mailmerge extends \rcube_plugin
 {
-    private rcmail $rcmail;
+    private rcmail $rc;
+    private Log $log;
 
     private const MODE_HTML = 'html';
     private const MODE_PLAIN = 'plain';
+    
+    use DisableUser, ResolveUsername;
 
 
     public function init(): void
     {
-        $this->rcmail = rcmail::get_instance();
+        $this->rc = rcmail::get_instance();
+        $this->load_config("config.inc.php.dist");
+        $this->load_config();
+        $this->log = new Log(MAILMERGE_LOG_FILE, MAILMERGE_PREFIX, $this->rc->config->get(__('log_level'), LogLevel::INFO->value));
+
+        if ($this->is_disabled()) {
+            return;
+        }
 
         $this->register_action('plugin.mailmerge', [$this, 'mailmerge_action']);
         $this->register_action('plugin.mailmerge.get-folders', [$this, 'get_folders']);
 
         $this->add_hook("ready", function ($param) {
-//            self::log('ready', $param);
-            if ($param['task'] == 'mail' && $param['action'] === 'compose') {
+            $this->log->debug('ready', $param);
+            $prefs = $this->rc->user->get_prefs();
+            if ($param['task'] == 'mail' && $param['action'] === 'compose' && $prefs[__("enabled")]) {
 
                 $header = \html::div('row', \html::div('col-12', \html::span("font-weight-bold", "Mail merge options")));
 
@@ -85,9 +112,35 @@ class mailmerge extends \rcube_plugin
                 );
 
                 $this->api->add_content(\html::div(["style" => "padding-bottom: 1rem; margin: 0", "class" => "file-upload"],
-                    $header . $separator . $enclosed . $folders. $file), 'composeoptions');
+                    $header . $separator . $enclosed . $folders . $file), 'composeoptions');
                 $this->include_script('mailmerge.js');
             }
+        });
+
+        $this->add_hook("preferences_list", function ($param) {
+            $this->log->trace('preferences_list', $param);
+            if ($param['section'] == 'compose' && $param['current'] == 'compose') {
+                $prefs = $this->rc->user->get_prefs();
+                $blocks = $param["blocks"];
+                $blocks["advanced"]["options"]["plugin.mailmerge"] = [
+                    'title' => "Enable Mailmerge in Compose view",
+                    'content' => (new \html_checkbox(["id" => __("enabled"), "value" => "1", "name" => "_".__("enabled")]))
+                        ->show($prefs[__("enabled")] ?? "0"),
+                ];
+                return ["blocks" => $blocks];
+            }
+            return $param;
+        });
+
+        $this->add_hook("preferences_save", function ($param) {
+            if ($param["section"] != "compose") {
+                return $param;
+            }
+            $this->log->debug('preferences_save', $param);
+            $param['prefs'][__("enabled")] = filter_input(INPUT_POST, "_".__("enabled"), FILTER_VALIDATE_BOOLEAN);
+            $this->log->debug('preferences_save', $param);
+
+            return $param;
         });
     }
 
@@ -115,7 +168,8 @@ class mailmerge extends \rcube_plugin
             "_enclosure" => ['filter' => FILTER_CALLBACK, 'options' => [$this, "filter_callback_enclosure"]],
             "_folder" => ['filter' => FILTER_CALLBACK, 'options' => [$this, "filter_callback_folder"]],
         ], true);
-        self::log($input, $_REQUEST, $_FILES);
+        
+        $this->log->debug($input, $_REQUEST, $_FILES);
 
         assert(count($_FILES) === 1, "File missing");
 
@@ -140,12 +194,12 @@ class mailmerge extends \rcube_plugin
         foreach ($dict as &$line) {
             $mime = new Mail_mime();
 
-            $identity = $this->rcmail->user->get_identity($input["_from"]);
+            $identity = $this->rc->user->get_identity($input["_from"]);
 
             $mime->headers([
-                'Date' => $this->rcmail->user_date(),
-                'User-Agent' => $this->rcmail->config->get('useragent'),
-                'Message-ID' => $this->rcmail->gen_message_id($input["_from"]),
+                'Date' => $this->rc->user_date(),
+                'User-Agent' => $this->rc->config->get('useragent'),
+                'Message-ID' => $this->rc->gen_message_id($input["_from"]),
             ]);
 
             if (!empty($identity['organization'])) {
@@ -155,24 +209,24 @@ class mailmerge extends \rcube_plugin
             $from = $identity['name'] . ' <' . $identity['email'] . '>';
             $mime->setFrom($from);
 
-            $mime->setSubject(self::replace_vars($input["_subject"], $line));
+            $mime->setSubject($this->replace_vars($input["_subject"], $line));
 
             foreach ($input["_to"] as $recipient) {
-                $mime->addTo(self::replace_vars($recipient, $line));
+                $mime->addTo($this->replace_vars($recipient, $line));
             }
             if (count($input["_cc"]) > 0) {
                 foreach ($input["_cc"] as $recipient) {
-                    $mime->addCc(self::replace_vars($recipient, $line));
+                    $mime->addCc($this->replace_vars($recipient, $line));
                 }
             }
             if (count($input["_bcc"]) > 0) {
                 foreach ($input["_bcc"] as $recipient) {
-                    $mime->addBcc(self::replace_vars($recipient, $line));
+                    $mime->addBcc($this->replace_vars($recipient, $line));
                 }
             }
             if (count($input["_replyto"]) > 0) {
                 $rto = array_map(function ($rr) use ($line) {
-                    self::replace_vars($rr, $line);
+                    $this->replace_vars($rr, $line);
                 }, $input["_replyto"]);
 
                 $mime->headers([
@@ -182,14 +236,16 @@ class mailmerge extends \rcube_plugin
             }
             if (count($input["_followupto"]) > 0) {
                 $mime->headers(["Mail-Followup-To" => array_map(function ($rr) use ($line) {
-                    self::replace_vars($rr, $line);
+                    $this->replace_vars($rr, $line);
                 }, $input["_followupto"])]);
             }
 
-            $message = self::replace_vars($input["message"], $line);
+            $this->log->debug("begin message");
+            $message = $this->replace_vars($input["message"], $line);
+            $this->log->debug("end message");
             if ($input["_mode"] == self::MODE_HTML) {
                 $mime->setHTMLBody($message);
-                $mime->setTXTBody($this->rcmail->html2text($message));
+                $mime->setTXTBody($this->rc->html2text($message));
             } else {
                 $mime->setTXTBody($message);
             }
@@ -210,10 +266,10 @@ class mailmerge extends \rcube_plugin
                 $COMPOSE['attachments'] = [];
             }
 
-            $folding = (int)$this->rcmail->config->get('mime_param_folding');
+            $folding = (int)$this->rc->config->get('mime_param_folding');
             foreach ($COMPOSE['attachments'] as $attachment) {
                 // This hook retrieves the attachment contents from the file storage backend
-                $attachment = $this->rcmail->plugins->exec_hook('attachment_get', $attachment);
+                $attachment = $this->rc->plugins->exec_hook('attachment_get', $attachment);
                 $is_inline = false;
                 $dispurl = null;
                 $is_file = !empty($attachment['path']);
@@ -268,68 +324,74 @@ class mailmerge extends \rcube_plugin
             // endregion
 
             $msg_str = $mime->getMessage();
-            $this->rcmail->storage->save_message($input["_folder"], $msg_str);
+            $this->rc->storage->save_message($input["_folder"], $msg_str);
         }
     }
 
     public function get_folders(): void
     {
-        $this->rcmail->output->command("plugin.mailmerge.folders", [
-            'folders' => $this->rcmail->storage->list_folders(),
-            'special_folders' => $this->rcmail->storage->get_special_folders()
+        $this->rc->output->command("plugin.mailmerge.folders", [
+            'folders' => $this->rc->storage->list_folders(),
+            'special_folders' => $this->rc->storage->get_special_folders()
         ]);
     }
-    private static function replace_vars(string|null $str, array $dict): string|null
-{
-    if (is_null($str)) {
-        return null;
-    }
 
-    // self::log("call with: ".str_replace("\n", " ", $str));
-
-    assert(is_string($str));
-
-    $open_tags = 0;
-    $opened_at = false;
-    for ($ptr = 0; $ptr < strlen($str); $ptr++) {
-        self::log($ptr. " ". substr($str, $ptr, 2));
-        if (substr($str, $ptr, 2) == '{{') {
-            // a new tag is opened
-            if ($open_tags == 0) {
-                $opened_at = $ptr;
-            }
-            self::log("open tags ".$open_tags);
-            $open_tags += 1;
-            self::log("opening tag ".$open_tags);
-            $ptr += 1; // skip next char
-        }
-        if (substr($str, $ptr, 2) == '}}') {
-            $ptr += 1; // set ourselves one further to actual tag close
-            if ($open_tags > 0) {
-                $open_tags -= 1;
-                if ($open_tags === 0) {
-                    // highest hierarchy tag was closed
-                    // extract tag without surrounding {{ }}
-                    $tag = substr($str, $opened_at + 2, $ptr - $opened_at - 3);
-                    $taglen = strlen($tag) + 4;
-                    // parse the tag content that may recursively calls back to here again
-                    $replacement = self::parse_tag($tag, $dict);
-                    // extract string parts before and after the current tag
-                    $before_tag = substr($str, 0, $opened_at);
-                    $after_tag = substr($str, $ptr + 1);
-                    // built the new string
-                    $str = $before_tag . $replacement . $after_tag;
-                    // adjust pointer by length difference of the original tag and its replacement
-                    $ptr -= $taglen - strlen($replacement);
-                }
-            } // else we have dangling }}-s leave them as is
-        }
-    }
-    return $str;
-}
-    private static function parse_tag(string $var, array $dict) : ?string
+    private function replace_vars(string|null $str, array $dict): string|null
     {
-        $var = self::replace_vars($var, $dict);
+        if (is_null($str)) {
+            return null;
+        }
+
+        $this->log->debug("call with: " . str_replace("\n", " ", $str));
+
+        assert(is_string($str));
+
+        $open_tags = 0;
+        $opened_at = false;
+        for ($ptr = 0; $ptr < strlen($str); $ptr++) {
+            $this->log->trace($ptr . " " . substr($str, $ptr, 2));
+            if (substr($str, $ptr, 2) == '{{') {
+                // a new tag is opened
+                if ($open_tags == 0) {
+                    $opened_at = $ptr;
+                }
+                $this->log->trace("open tags " . $open_tags);
+                $open_tags += 1;
+                $this->log->trace("opening tag " . $open_tags);
+                $ptr += 1; // skip next char
+            }
+            if (substr($str, $ptr, 2) == '}}') {
+                $ptr += 1; // set ourselves one further to actual tag close
+                if ($open_tags > 0) {
+                    $this->log->trace("closing tag " . $open_tags);
+                    $open_tags -= 1;
+                    $this->log->trace("open tags " . $open_tags);
+                    if ($open_tags === 0) {
+                        // highest hierarchy tag was closed
+                        // extract tag without surrounding {{ }}
+                        $tag = substr($str, $opened_at + 2, $ptr - $opened_at - 3);
+                        $this->log->debug("tag " . $tag);
+                        $taglen = strlen($tag) + 4;
+                        // parse the tag content that may recursively calls back to here again
+                        $replacement = $this->parse_tag($tag, $dict);
+                        $this->log->debug("replacement " . $replacement);
+                        // extract string parts before and after the current tag
+                        $before_tag = substr($str, 0, $opened_at);
+                        $after_tag = substr($str, $ptr + 1);
+                        // built the new string
+                        $str = $before_tag . $replacement . $after_tag;
+                        // adjust pointer by length difference of the original tag and its replacement
+                        $ptr -= $taglen - strlen($replacement);
+                    }
+                } // else we have dangling }}-s leave them as is
+            }
+        }
+        return $str;
+    }
+
+    private function parse_tag(string $var, array $dict): ?string
+    {
+        $var = $this->replace_vars($var, $dict);
 
         if (str_contains($var, "|")) {
             $tokens = explode("|", $var);
@@ -420,30 +482,10 @@ class mailmerge extends \rcube_plugin
 
     private function filter_callback_folder(string $folder): ?string
     {
-        $folders = $this->rcmail->storage->list_folders();
-        $special_folders = $this->rcmail->storage->get_special_folders();
+        $folders = $this->rc->storage->list_folders();
+        $special_folders = $this->rc->storage->get_special_folders();
         $drafts = array_key_exists("drafts", $special_folders) ? $special_folders["drafts"] : "Drafts";
 
         return in_array($folder, $folders) ? $folder : $drafts;
     }
-
-    private static function log(...$lines): void
-{
-    foreach ($lines as $line) {
-        $bt = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 2)[1];
-        $func = $bt["function"];
-        $cls = $bt["class"];
-        if (!is_string($line)) {
-            $line = print_r($line, true);
-        }
-        $llines = explode(PHP_EOL, $line);
-        rcmail::write_log('mailmerge', "[mailmerge] {" . $cls . "::" . $func . "} " . $llines[0]);
-        unset($llines[0]);
-        if (count($llines) > 0) {
-            foreach ($llines as $l) {
-                rcmail::write_log('mailmerge', str_pad("...", strlen("[mailmerge] "), " ", STR_PAD_BOTH) . "{" . $cls . "::" . $func . "} " . $l);
-            }
-        }
-    }
-}
 }

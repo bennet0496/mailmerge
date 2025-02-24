@@ -1,1 +1,65 @@
 <?php
+
+// Log Level
+// TRACE = 4
+// DEBUG = 3
+// WARNING = 2
+// INFO = 1
+// ERROR = 0
+$config['mailmerge_log_level'] = 1;
+
+// List of users to exclude
+$config['mailmerge_exclude_users'] = [];
+
+// Address books with users to allow. Users not in there will be denied
+$config['mailmerge_exclude_users_not_in_addr_books'] = [];
+
+// Exclude users listed by uid (you need add the mapping to the address book) or email in any of the following
+// address books. This allows you to configure a hidden LDAP address book containing the users
+// to exclude.
+//
+// Hide an addressbook by setting
+// $config['ldap_public'][*] = [
+//      ...
+//      'hidden' => true,
+// ...
+//  ];
+// in the global config.
+//
+// Add the uid mapping via
+// $config['ldap_public'][*] = [
+//      ...
+//      'fieldmap' => [
+//          ...
+//     //internal => ldapattr
+//          'uid' => 'uid',
+//          ...
+//      ],
+//      ...
+// ]
+// in the global config. Replace mapped attribute with appropriate value for your directory e.g. cn
+// And replace "*" with the appropriate address book name
+$config['mailmerge_exclude_users_in_addr_books'] = [];
+
+// Exclude users that have a mapped value in an address book
+// format [ [ 'address_book', 'mapped_attribute', 'matched_value' ], ... ]
+//
+// Resulting in every user listed in the address book "address_book"
+// to be excluded if they have a "mapped_attribute", matching "matched_value".
+//
+// E.g. ['public', 'memberOf', 'cn=no_cloud,ou=groups,dc=example,dc=com']
+//
+// multiple attributes and multiple address books are supported
+$config['mailmerge_exclude_users_with_addr_book_value'] = [];
+
+// Exclude user that are in a given group in an address book
+// format [ [ 'address_book', 'group' ], ... ]
+//
+// Resulting in every user listed in the address book "address_book" that is
+// in group "group" to be excluded. You have to correctly configure the group
+// mapping for the LDAP entry
+//
+// E.g. ['public', 'nomerge']
+//
+// multiple groups and multiple address books are supported
+$config['mailmerge_exclude_users_in_addr_book_group'] = [];
