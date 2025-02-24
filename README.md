@@ -13,6 +13,8 @@ The variable will be replaced by the value of the field name, e.g.:
 `{{LastName}}`: the variable will be replaced by the value of the field LastName
 `{{PrimaryEmail}}`: the variable will be replaced by the value of the field PrimaryEmail
 
+**The first row of the CSV will always be the table header determining the column names!**
+
 `{{name|if|then}}`
 If the value of the field name equals if, then the variable will be replaced by then.
 
