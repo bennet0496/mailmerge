@@ -1,32 +1,32 @@
 {
-    "name": "bennet0496/forward_warning",
-    "license": "MIT",
-    "description": "Display a privacy warning for external forwards",
-    "type": "roundcube-plugin",
-    "authors": [
-        {
-            "name": "Bennet Becker",
-            "email": "dev@bennet.cc"
-        }
-    ],
-    "repositories": [
-        {
-            "type": "composer",
-            "url": "https://plugins.roundcube.net"
-        }
-    ],
-    "require": {
-        "php": ">=8.1",
-        "roundcube/plugin-installer": "^0.3"
-    },
-    "extra": {
-        "roundcube": {
-            "min-version": "1.6.1"
-        }
-    },
-    "config": {
-        "allow-plugins": {
-            "roundcube/plugin-installer": true
-        }
+  "name": "bennet0496/mailmerge",
+  "license": "MIT",
+  "description": "Mailmerge Functionality for mass mails in Roundcube",
+  "type": "roundcube-plugin",
+  "authors": [
+    {
+      "name": "Bennet Becker",
+      "email": "bbecker@pks.mpg.de"
     }
+  ],
+  "repositories": [
+    {
+      "type": "composer",
+      "url": "https://plugins.roundcube.net"
+    }
+  ],
+  "require": {
+    "php": ">=8.1",
+    "roundcube/plugin-installer": "^0.3"
+  },
+  "extra": {
+    "roundcube": {
+      "min-version": "1.6.1"
+    }
+  },
+  "config": {
+    "allow-plugins": {
+      "roundcube/plugin-installer": true
+    }
+  }
 }
