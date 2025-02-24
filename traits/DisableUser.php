@@ -27,8 +27,11 @@ trait DisableUser {
     private function is_disabled(): bool
     {
         $ex = $this->rc->config->get(__("exclude_users"), []);
+        $exoth = $this->rc->config->get(__("exclude_all_users_but"), []);
         $exg = $this->rc->config->get(__("exclude_users_in_addr_books"), []);
+
         $exn = $this->rc->config->get(__("exclude_users_not_in_addr_books"), []);
+
         $exa = $this->rc->config->get(__("exclude_users_with_addr_book_value"), []);
         /** @noinspection SpellCheckingInspection */
         $exag = $this->rc->config->get(__("exclude_users_in_addr_book_group"), []);
@@ -38,6 +41,12 @@ trait DisableUser {
         // exclude directly deny listed users
         if (is_array($ex) && (in_array($this->rc->get_user_name(), $ex) || in_array($this->resolve_username(), $ex) || in_array($this->rc->get_user_email(), $ex))) {
             $this->log->info("access for " . $this->resolve_username() . " disabled via direct deny list");
+            return true;
+        }
+
+        // exclude all but allowed
+        if (is_array($exoth) && count($exoth) > 0 && !in_array($this->resolve_username(), $exoth)) {
+            $this->log->info("access for " . $this->resolve_username() . " not allowed");
             return true;
         }
 
