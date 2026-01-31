@@ -195,11 +195,11 @@ class mailmerge extends \rcube_plugin
             }
 
             if ($param['id'] === 'listcontrols') {
-                $param['content'] = html::a(["href" => "#sendunsent", "id" => "mailmerge_sendunsent",
+                $param['content'] .= html::a(["href" => "#sendunsent", "id" => "mailmerge_sendunsent",
                     "class" => "sendunsent send disabled" . ($under_drafts ? "" : " hidden"), "title" => $this->gettext("send_drafts_tooltip")],
                     html::span(["class" => "inner"], $this->gettext("send_drafts")));
             } elseif ($param['id'] === 'mailtoolbar') {
-                $param['content'] = html::a(["href" => "#sendselected", "id" => "mailmerge_sendselected",
+                $param['content'] .= html::a(["href" => "#sendselected", "id" => "mailmerge_sendselected",
                     "class" => "sendselected send disabled" . ($under_drafts ? "" : " hidden"), "title" => $this->gettext("send_selected_tooltip")],
                     html::span(["class" => "inner"], $this->gettext("send_selected")));
             }
