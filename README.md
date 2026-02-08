@@ -8,7 +8,7 @@ Inspired by: https://addons.thunderbird.net/en-US/thunderbird/addon/mail-merge/
 
 To see the option in compose view users first need to enable it under Advanced Options 
 in Settings > Preferences > Composing Messages.
-This to prevent users (that in theory should be able to see the option) being directly 
+This is to prevent users (that in theory should be able to see the option) being directly 
 pointed to it, as misuse of this plugin may cause
 SPAM and/or otherwise unwanted messages to be sent.
 
