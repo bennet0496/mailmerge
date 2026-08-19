@@ -44,7 +44,7 @@ $labels["file_encoding"] = "File Encoding";
 
 $labels["generation_behavior"] = "Generation Behavior";
 $labels["generate_all"] = "Generate All";
-$labels["generate_rcpt"] = "Generate only with at least one Recipient (To, CC or Bcc)";
+$labels["generate_rcpt"] = "Generate only with at least one Recipient (To, Cc or Bcc)";
 $labels["generate_to"] = "Generate only with To";
 $labels["generate_non_empty"] = "Skip on any empty recipient placeholder";
 
