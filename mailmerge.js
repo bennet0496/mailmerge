@@ -82,14 +82,14 @@ function mailmerge() {
 }
 
 rcmail.addEventListener('init', function(evt) {
-    console.log(evt)
+    // console.log(evt)
     if (rcmail.env.compose_commands) {
         rcmail.register_command("plugin.mailmerge", mailmerge, true)
         rcmail.env.compose_commands.push("plugin.mailmerge")
         rcmail.http_get("plugin.mailmerge.get-folders")
     } else {
         document.querySelector("#mailmerge_sendunsent")?.addEventListener("click", function (){
-            console.log(rcmail.env.mailmerge_currentfolder);
+            // console.log(rcmail.env.mailmerge_currentfolder);
             const lock = rcmail.set_busy(true, 'loading');
             rcmail.http_post("plugin.mailmerge.send-unsent",
                 { _mbox: rcmail.env.mailmerge_currentmbox, _search: rcmail.env.search_request},
@@ -97,7 +97,7 @@ rcmail.addEventListener('init', function(evt) {
         });
 
         document.querySelector("#mailmerge_sendselected")?.addEventListener("click", function () {
-            console.log(rcmail.env.mailmerge_currentfolder, rcmail.message_list.get_selection());
+            // console.log(rcmail.env.mailmerge_currentfolder, rcmail.message_list.get_selection());
             const lock = rcmail.set_busy(true, 'loading');
             rcmail.http_post("plugin.mailmerge.send-selected",
                 { _mbox: rcmail.env.mailmerge_currentmbox, _search: rcmail.env.search_request, _selected: rcmail.message_list.get_selection() },
@@ -108,7 +108,7 @@ rcmail.addEventListener('init', function(evt) {
         rcmail.triggerEvent("mailmerge_buttonstate");
 
         rcmail.message_list?.addEventListener("select", function (params) {
-            console.log("select", params);
+            // console.log("select", params);
             rcmail.triggerEvent("mailmerge_buttonstate");
         });
     }
@@ -126,11 +126,11 @@ rcmail.addEventListener("plugin.mailmerge.folders", function (data) {
 })
 
 rcmail.addEventListener("beforesavedraft", function (...params) {
-    console.log(params)
+    // console.log(params)
 })
 
 rcmail.addEventListener("aftersavedraft", function (...params) {
-    console.log(params)
+    // console.log(params)
 })
 
 rcmail.addEventListener("listupdate",
@@ -139,7 +139,7 @@ rcmail.addEventListener("listupdate",
      * @param {{folder:string, list:rcube_list_widget, rowcount:number, event:string}} params
      */
     function (params) {
-    console.log("listupdate", params);
+    // console.log("listupdate", params);
 
     rcmail.env.mailmerge_currentmbox = params.folder;
     rcmail.triggerEvent("mailmerge_buttonstate");
@@ -149,7 +149,7 @@ rcmail.addEventListener("listupdate",
 rcmail.addEventListener("mailmerge_buttonstate", function() {
     const path = rcmail.env.mailmerge_currentmbox.split(rcmail.env.delimiter);
 
-    console.log(path, rcmail.env.drafts_mailbox, rcmail.env.search_request, rcmail.env.search_scope);
+    // console.log(path, rcmail.env.drafts_mailbox, rcmail.env.search_request, rcmail.env.search_scope);
 
     document.querySelector("#mailmerge_sendunsent")?.classList.add("hidden", "disabled");
     document.querySelector("#mailmerge_sendselected")?.classList.add("hidden", "disabled");
